@@ -1,19 +1,44 @@
-# Build and Release Folders
+# === Keil 工程必要文件 (不可忽略) ===
+# .uvprojx (工程文件) 和 .uvoptx (配置选项) 建议保留
+
+# === 过滤 Keil 编译生成的临时文件夹 ===
+Library/
+Listings/
+Objects/
+DebugConfig/
+Debug/
+Release/
 bin-debug/
 bin-release/
 [Oo]bj/
 [Bb]in/
 
-# Other files and folders
+# === 过滤特定的临时文件后缀 ===
+*.bak
+*.dep
+*.txt
+*.htm
+*.lnp
+*.sct
+*.map
+*.lst
+*.o
+*.d
+*.crf
+*.axf
+*.i
+*.iex
+*.build_log.htm
+*.scvd
+
+# === 过滤用户本地配置 (防止不同电脑路径冲突) ===
+*.uvgui.*
+*.uvguix.*
+.vs/
 .settings/
+.15981
 
-# Executables
-*.swf
-*.air
-*.ipa
-*.apk
-
-#过滤掉不想要文件和文件夹
+# === 过滤其他开发环境残留 ===
 *.exe
 *.sln
 *.vcxproj
@@ -23,17 +48,10 @@ bin-release/
 *.db
 *.ipch
 *.json
-Debug/
-Library/
-Listings/
-Objects/
-*.uvprojx
-*.uvoptx
-.15981
-DebugConfig/
-.vs
-Release/
+*.swf
+*.air
+*.ipa
+*.apk
 
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+# === 排除 Git 自身文件 ===
+.gitignore
