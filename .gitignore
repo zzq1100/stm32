@@ -31,6 +31,7 @@ bin-release/
 *.iex
 *.build_log.htm
 *.scvd
+*.s
 
 # === 过滤用户本地配置 (防止不同电脑路径冲突) ===
 *.uvgui.*

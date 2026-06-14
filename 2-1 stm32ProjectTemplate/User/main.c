@@ -8,7 +8,8 @@ int main()
 	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_13;
 	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOC, &GPIO_InitStruct);
-	GPIO_ResetBits(GPIOC, GPIO_Pin_13);
+	//GPIO_ResetBits(GPIOC, GPIO_Pin_13);
+	GPIO_SetBits(GPIOC, GPIO_Pin_13);
 	while (1)
 	{
 		
