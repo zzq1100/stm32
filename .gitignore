@@ -40,6 +40,11 @@ bin-release/
 .settings/
 .15981
 
+# === 过滤 VS Code 和插件生成的临时日志 ===
+.vscode/
+*.log
+*.lock
+
 # === 过滤其他开发环境残留 ===
 *.exe
 *.sln
