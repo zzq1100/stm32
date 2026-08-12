@@ -36,7 +36,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define INBUFFER_MAX 128
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -44,7 +44,8 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 uint8_t recv_byte = 0;
-uint32_t cnt = 0;
+uint8_t inbuffer[INBUFFER_MAX] = {0};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -52,7 +53,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+uint8_t ReadLine(UART_HandleTypeDef *huart);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -100,16 +101,25 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    if (HAL_OK == HAL_UART_Receive(&huart1, &recv_byte, 1, HAL_MAX_DELAY))
-    {
-      HAL_UART_Transmit(&huart1, &recv_byte, 1, 0);
-    }
-    cnt++;
-    if (cnt >= 10)
-    {
-      cnt = 0;
-      HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_8);
-    }
+    // version 1
+    // if (HAL_OK == HAL_UART_Receive(&huart1, &recv_byte, 1, HAL_MAX_DELAY))
+    // {
+    //   /* 每次发送动作：LED 只切换一次 */
+    //   HAL_UART_Transmit(&huart1, &recv_byte, 1, 0);  /* 回显第一个字节 */
+    //   HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_8);
+    //   /* 把本次发送剩余的字节读完并回显（不再切换 LED），
+    //      直到 10ms 内没有新数据，视为一次发送结束 */
+    //   while (HAL_UART_Receive(&huart1, &recv_byte, 1, 10) == HAL_OK)
+    //   {
+    //     HAL_UART_Transmit(&huart1, &recv_byte, 1, 0);
+    //   }
+    // }
+
+    // version 2
+    uint8_t num = ReadLine(&huart1);
+    HAL_UART_Transmit(&huart1, inbuffer, num, HAL_MAX_DELAY);
+    HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_8);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -220,7 +230,34 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t ReadLine(UART_HandleTypeDef *huart)
+{
+  uint8_t ch = 0;
+  uint8_t total = 0;
 
+  while (1)
+  {
+    /* huart 本身是指针，直接传，不要加 & */
+    HAL_UART_Receive(huart, &ch, 1, HAL_MAX_DELAY);
+
+    if (ch == '\n')
+    {
+      inbuffer[total] = '\0';
+      return total;
+    }
+    if (ch == '\r')
+    {
+      HAL_UART_Receive(huart, &ch, 1, HAL_MAX_DELAY);
+      inbuffer[total] = '\0';
+      return total;
+    }
+    if (total >= INBUFFER_MAX - 1)
+    {
+      return 0;  /* 防止越界 */
+    }
+    inbuffer[total++] = ch;
+  }
+}
 /* USER CODE END 4 */
 
 /**

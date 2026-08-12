@@ -1,12 +1,7 @@
-# === Keil 工程必要文件 (不可忽略) ===
-# .uvprojx (工程文件) 和 .uvoptx (配置选项) 建议保留
-
-# === 过滤 Keil 编译生成的临时文件夹 ===
-Library/
+# === 编译生成的临时文件夹 ===
 Listings/
 Objects/
 DebugConfig/
-Start/
 Debug/
 Release/
 bin-debug/
@@ -14,38 +9,46 @@ bin-release/
 [Oo]bj/
 [Bb]in/
 
-# === 过滤特定的临时文件后缀 ===
-*.bak
-*.dep
-*.txt
-*.htm
-*.lnp
-*.sct
-*.map
-*.lst
+# === 编译生成的文件 ===
 *.o
 *.d
 *.crf
 *.axf
+*.hex
+*.map
+*.lst
+*.lnp
+*.dep
+*.sct
 *.i
 *.iex
 *.build_log.htm
-*.scvd
-*.s
+*.htm
+*.bak
 
-# === 过滤用户本地配置 (防止不同电脑路径冲突) ===
+# === RTE 生成的调试配置（保留 RTE_Components.h）===
+**/RTE/Device/
+*.dbgconf
+*.scvd
+
+# === 用户本地配置 ===
 *.uvgui.*
 *.uvguix.*
+.15981
+.vscode/
 .vs/
 .settings/
-.15981
-
-# === 过滤 VS Code 和插件生成的临时日志 ===
-.vscode/
 *.log
 *.lock
 
-# === 过滤其他开发环境残留 ===
+# === CubeMX 冗余 CMSIS 内容（未使用）===
+**/Drivers/CMSIS/DSP/
+**/Drivers/CMSIS/NN/
+**/Drivers/CMSIS/docs/
+**/Drivers/CMSIS/Lib/
+**/Drivers/CMSIS/Device/**/Source/
+
+# === 其他开发环境残留 ===
 *.exe
 *.sln
 *.vcxproj
@@ -59,6 +62,3 @@ bin-release/
 *.air
 *.ipa
 *.apk
-
-# === 排除 Git 自身文件 ===
-.gitignore
