@@ -1,5 +1,5 @@
-#ifndef __BSP_USART_REDIR
-#define __BSP_USART_REDIR
+#ifndef __BSP_USART_REDIR_H
+#define __BSP_USART_REDIR_H
 
 
 #ifdef __cplusplus
