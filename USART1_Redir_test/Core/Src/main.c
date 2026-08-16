@@ -24,6 +24,7 @@
 #include "stdio.h"
 #include "BSP_Usart_Redir.h"
 #include "BSP_LED.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,14 +39,14 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define SIZE 64
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+char which_led[SIZE];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -53,7 +54,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void Usart_Ctl_LED(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -99,10 +100,14 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    int a = 0;
-    scanf("%d", &a);
-    printf("echo->%d\n", a);
-    HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_8);
+    Usart_Ctl_LED();
+
+
+
+
+
+    // printf("echo->%d\n", a);
+    // HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_8);
 
     // BSP_LED_ON(LED1);
     // HAL_Delay(500);
@@ -235,7 +240,35 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void Usart_Ctl_LED(void)
+{
+  fgets(which_led, SIZE - 1, stdin);
+  if (strncasecmp(which_led, "LED1", strlen("LED1")) == 0)
+  {
+    printf("LED1 is ON\n");
+    LED_Blink(LED1);
+  }
+  if (strncasecmp(which_led, "LED2", strlen("LED2")) == 0)
+  {
+    printf("LED2 is ON\n");
+    LED_Blink(LED2);
+  }
+  if (strncasecmp(which_led, "LED3", strlen("LED3")) == 0)
+  {
+    printf("LED3 is ON\n");
+    LED_Blink(LED3);
+  }
+  if (strncasecmp(which_led, "LED4", strlen("LED4")) == 0)
+  {
+    printf("LED4 is ON\n");
+    LED_Blink(LED4);
+  }
+  if (strncasecmp(which_led, "ALL", strlen("ALL")) == 0)
+  {
+    printf("All LEDs are ON\n");
+    LED_Blink(ALL);
+  }
+}
 /* USER CODE END 4 */
 
 /**

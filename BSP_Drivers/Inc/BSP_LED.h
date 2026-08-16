@@ -14,13 +14,13 @@ typedef enum
     LED1 = 1,
     LED2,
     LED3,
-    LED4
+    LED4,
+    ALL
 } LED_t;
 
 void BSP_LED_ON(LED_t led);
-
 void BSP_LED_OFF(LED_t led);
-
+void LED_Blink(LED_t led);
 
 #ifdef __cplusplus
 }
