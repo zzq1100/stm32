@@ -103,32 +103,6 @@ int main(void)
     Usart_Ctl_LED();
 
 
-
-
-
-    // printf("echo->%d\n", a);
-    // HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_8);
-
-    // BSP_LED_ON(LED1);
-    // HAL_Delay(500);
-    // BSP_LED_OFF(LED1);
-    // HAL_Delay(500);
-
-    // BSP_LED_ON(LED2);
-    // HAL_Delay(500);
-    // BSP_LED_OFF(LED2);
-    // HAL_Delay(500);
-
-    // BSP_LED_ON(LED3);
-    // HAL_Delay(500);
-    // BSP_LED_OFF(LED3);
-    // HAL_Delay(500);
-
-    // BSP_LED_ON(LED4);
-    // HAL_Delay(500);
-    // BSP_LED_OFF(LED4);
-    // HAL_Delay(500);
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
