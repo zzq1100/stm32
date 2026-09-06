@@ -93,3 +93,71 @@ void LED_Blink(LED_t led)
         }
     }
 }
+
+void LED_Blink2(LED_t led, uint8_t repeat, uint16_t delay)
+{
+    if (led == LED1)
+    {
+        for (int i = 1; i <= repeat; i++)
+        {
+            BSP_LED_ON(LED1);
+            printf("第 %d 次闪灯\n", i);
+            HAL_Delay(delay);
+            BSP_LED_OFF(LED1);
+            HAL_Delay(delay);
+        }
+    }
+    if (led == LED2)
+    {
+        for (int i = 1; i <= repeat; i++)
+        {
+            BSP_LED_ON(LED2);
+            printf("第 %d 次闪灯\n", i);
+            HAL_Delay(delay);
+            BSP_LED_OFF(LED2);
+            HAL_Delay(delay);
+        }
+    }
+    if (led == LED3)
+    {
+        for (int i = 1; i <= repeat; i++)
+        {
+            BSP_LED_ON(LED3);
+            printf("第 %d 次闪灯\n", i);
+            HAL_Delay(delay);
+            BSP_LED_OFF(LED3);
+            HAL_Delay(delay);
+        }
+    }
+    if (led == LED4)
+    {
+        for (int i = 1; i <= repeat; i++)
+        {
+            BSP_LED_ON(LED4);
+            printf("第 %d 次闪灯\n", i);
+            HAL_Delay(delay);
+            BSP_LED_OFF(LED4);
+            HAL_Delay(delay);
+        }
+    }
+    if (led == ALL)
+    {
+        LED_t leds[4] = {LED1, LED2, LED3, LED4};
+        int cnt = repeat;
+        int led_times = 1;
+        while (cnt--)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                BSP_LED_ON(leds[i]);
+            }
+            printf("第 %d 次闪灯\n", led_times++);
+            HAL_Delay(delay);
+            for (int i = 0; i < 4; i++)
+            {
+                BSP_LED_OFF(leds[i]);
+            }
+            HAL_Delay(delay);
+        }
+    }
+}
