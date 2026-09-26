@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "BSP_Usart_Redir.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +31,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define BUFFER_SIZE 128
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,7 +43,9 @@
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+volatile static uint16_t rx_index = 0;
+static uint8_t rx_buffer[BUFFER_SIZE];
+static uint8_t tx_buffer[BUFFER_SIZE];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -90,7 +92,8 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  BSP_Usart_Init(&huart1);
+  HAL_UART_Receive_IT(&huart1, &rx_buffer[rx_index], 1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -208,6 +211,58 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static void Handle_Data(void)
+{
+  uint16_t rx_total = rx_index + 1;
+  for (int i = 0; i < rx_total; i++)
+  {
+    if (rx_buffer[i] >= 'a' && rx_buffer[i] <= 'z')
+    {
+      tx_buffer[i] = rx_buffer[i] - 32;
+    }
+    else if (rx_buffer[i] >= 'A' && rx_buffer[i] <= 'Z')
+    {
+      tx_buffer[i] = rx_buffer[i] + 32;
+    }
+    else
+    {
+      tx_buffer[i] = rx_buffer[i];
+    }
+  }
+}
+
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART1)
+  {
+    if (rx_index > BUFFER_SIZE - 1)
+    {
+      rx_index= 0;
+      HAL_GPIO_WritePin(GPIOF, GPIO_PIN_9, GPIO_PIN_RESET);
+      return;
+    }
+    else if (rx_buffer[rx_index] == '\n')
+    {
+      Handle_Data();
+      HAL_UART_Transmit_IT(&huart1, tx_buffer, rx_index + 1);
+      rx_index = 0;
+    }
+    else
+    {
+      rx_index++;
+    }
+    HAL_UART_Receive_IT(&huart1, &rx_buffer[rx_index], 1);
+  }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART1)
+  {
+    HAL_GPIO_WritePin(GPIOF, GPIO_PIN_8, GPIO_PIN_SET);
+  }
+}
 
 /* USER CODE END 4 */
 
