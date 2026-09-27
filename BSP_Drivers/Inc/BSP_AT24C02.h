@@ -24,6 +24,7 @@
 #define READ_TIMEOUT_MS 50
 #define Write_TIMEOUT_MS 50
 
+
 typedef struct 
 {
 	I2C_HandleTypeDef *i2c;

@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant HW as I2C2 硬件
+    participant EV as I2C2_EV_IRQHandler
+    participant HAL as HAL_I2C_EV_IRQHandler
+    participant BSP as HAL_I2C_MemRxCpltCallback
+    participant CB as EEPROM_Read_CallBack
+    participant LIB as printf/puts → putchar
+    participant U as fputc → HAL_UART_Transmit
+
+    HW->>EV: EV 中断
+    EV->>HAL: HAL_I2C_EV_IRQHandler(&hi2c2)
+    HAL->>HAL: I2C_MasterTransmit_TXE / _BTF 发设备地址+寄存器地址
+    HAL->>HAL: I2C_MasterReceive_RXNE / _BTF 逐字节收取
+    HAL->>BSP: HAL_I2C_MemRxCpltCallback(&hi2c2)
+    BSP->>CB: user_callback(true) → EEPROM_Read_CallBack(true)
+    CB->>LIB: printf("读 page 成功\n") → puts → putchar
+    LIB->>U: HAL_UART_Transmit(1 字节) → HAL_GetTick()
+    CB->>LIB: for(i=0..7) printf("%x  ") → __2printf → _printf_core → putchar
+    LIB->>U: HAL_UART_Transmit → HAL_GetTick()
