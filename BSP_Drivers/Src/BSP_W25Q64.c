@@ -1,375 +1,335 @@
 #include "BSP_W25Q64.h"
-#include "BSP_LED.h"
+#include "string.h"
 
-spi_flash_t g_w25qxx;
-static bool g_is_init = false;
-const uint8_t dummy = 0x00;
+spi_falsh_t w25qxx;
 
-// GPIOE, PIN6, 拉低片选
-static void BSP_W25Qxx_CS_Enable(void)
+static void SPI_Flash_Init(SPI_HandleTypeDef *spi1)
 {
-    if (!g_is_init)
-        return;
-    HAL_GPIO_WritePin(g_w25qxx.gpio_port, g_w25qxx.nss_pin, GPIO_PIN_RESET);
+    w25qxx.page_size           = PAGE_SIZE;
+    w25qxx.sector_size         = SECTOR_SIZE;
+    w25qxx.block_size          = BLOCK_SIZE;
+    w25qxx.mem_total_size      = MEM_TOTAL_SIZE;
+    w25qxx.chip_id             = CHIP_ID;
+    w25qxx.hspi1               = spi1;
+    w25qxx.gpio_port           = GPIO_PORT;
+    w25qxx.nss_pin             = NSS_PIN;
+    w25qxx.is_init             = true;
 }
 
-static void BSP_W25Qxx_CS_Disable(void)
+static void BSP_W25Qxx_CS_Enable()
 {
-    if (!g_is_init)
-        return;
-    HAL_GPIO_WritePin(g_w25qxx.gpio_port, g_w25qxx.nss_pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(w25qxx.gpio_port, w25qxx.nss_pin, GPIO_PIN_RESET);
 }
 
-static bool BSP_W25Qxx_Is_busy(void)
+static void BSP_W25Qxx_CS_Disable()
 {
-    return BSP_W25Qxx_Statue1_Reg() & W25Qxx_STATUS_BUSY;
+    HAL_GPIO_WritePin(w25qxx.gpio_port, w25qxx.nss_pin, GPIO_PIN_SET);
 }
 
-static bool BSP_W25Qxx_Is_Wel_Enable(void)
+static bool BSP_W25Qxx_Write_Is_Busy()
 {
-    return BSP_W25Qxx_Statue1_Reg() & W25Qxx_STATUS_WEL;
+    return BSP_W25Qxx_Get_SR1() & W25Qxx_WRITE_BUSY_BIT;
 }
 
-bool BSP_W25Qxx_Init(spi_flash_t *init)
+static bool BSP_W25Qxx_WEL_Is_Enable()
 {
-    if (init == NULL)
-        return g_is_init;
-    g_w25qxx.page_size = init->page_size;
-    g_w25qxx.sector_size = init->sector_size;
-    g_w25qxx.block_size = init->block_size;
-    g_w25qxx.mem_total_size = init->mem_total_size;
-    g_w25qxx.chip_id = init->chip_id;
-    g_w25qxx.hspi = init->hspi;
-    g_w25qxx.gpio_port = init->gpio_port;
-    g_w25qxx.nss_pin = init->nss_pin;
-    g_is_init = true;
+    return BSP_W25Qxx_Get_SR1() & W25Qxx_WEL_ENABLE_BIT;
+}
 
-    // TODO
-    uint32_t id = BSP_W25Qxx_ID(); // 获取SPI flash内部的id
-    if (g_w25qxx.chip_id != id)
+bool BSP_W25Qxx_Init(SPI_HandleTypeDef *spi1)
+{
+    SPI_Flash_Init(spi1);
+
+    uint32_t id = BSP_W25Qxx_Get_ID();
+    if (id != w25qxx.chip_id)
     {
-        g_is_init = false;
-        printf(">> BSP_W25Qxx_Init error, ID error, set ID is : 0x%x, current ID is: 0x%x\n", g_w25qxx.chip_id, id);
-        return g_is_init;
+        w25qxx.is_init = false;
+        printf(">> BSP_W25Qxx_Init Error <<\n");
+        return false;
     }
-    printf(">> BSP_W25Qxx_Init success! current ID is: 0x%x\n", id);
-    return g_is_init;
+
+    printf(">> BSP_W25Qxx_Init Success & ID: 0x%x <<\n", w25qxx.chip_id);
+    return true;
 }
 
-uint32_t BSP_W25Qxx_ID(void)
+uint32_t BSP_W25Qxx_Get_ID(void)
 {
-    if (!g_is_init)
-        return 0x0;
-    BSP_W25Qxx_CS_Enable();
+    if (w25qxx.is_init == false)
+        return 0;
 
-    uint8_t cmd = CMD_W25QXX_JEDEC_ID;
+    uint8_t cmd = CMD_W25Qxx_GET_JEDIC_ID;
     uint8_t id[3] = {0};
-    HAL_StatusTypeDef state = HAL_SPI_Transmit(g_w25qxx.hspi, &cmd, sizeof(cmd), HAL_MAX_DELAY);
+    HAL_StatusTypeDef state = HAL_OK;
+
+    BSP_W25Qxx_CS_Enable();
+
+    state = HAL_SPI_Transmit(w25qxx.hspi1, &cmd, sizeof(cmd), HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
-        printf(">> BSP_W25Qxx_ID, HAL_SPI_Transmit error, cmd is : 0x%x failed, state: 0x%x\n", cmd, state);
-        memset(id, 0, sizeof(id));
-        goto END;
+        printf(">> Get_ID's HAL_SPI_Transmit Error <<\n");
+        goto EXIT;
     }
-    state = HAL_SPI_Receive(g_w25qxx.hspi, id, sizeof(id), HAL_MAX_DELAY);
+    state = HAL_SPI_Receive(w25qxx.hspi1, id, sizeof(id), HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
-        printf(">> BSP_W25Qxx_ID, HAL_SPI_Receive error, cmd is : 0x%x failed, state: 0x%x\n", cmd, state);
         memset(id, 0, sizeof(id));
-        goto END;
+        printf(">> Get_ID's HAL_SPI_Receive Error <<\n");
+        goto EXIT;
     }
-END:
+
+EXIT:
     BSP_W25Qxx_CS_Disable();
-    return ((id[0] << 16) | (id[1] << 8) | (id[2])); // 0000 0000 0000 0000 0000 0000 0000 0000
+    return (id[0] << 16) | (id[1] << 8) | (id[2]);
 }
 
-uint8_t BSP_W25Qxx_Statue1_Reg(void)
+uint8_t BSP_W25Qxx_Get_SR1(void)
 {
-    if (!g_is_init)
+    if (w25qxx.is_init == false)
         return 0xFF;
-    uint8_t cmd = CMD_W25QXX_READ_STATUS_REG1;
-    uint8_t status_reg = 0xFF;
+
+    uint8_t cmd = CMD_W25Qxx_READ_SR1;
+    uint8_t SR1 = 0xFF;
+    HAL_StatusTypeDef state = HAL_OK;
+
     BSP_W25Qxx_CS_Enable();
-    HAL_StatusTypeDef state = HAL_SPI_Transmit(g_w25qxx.hspi, &cmd, sizeof(cmd), HAL_MAX_DELAY);
+
+    state = HAL_SPI_Transmit(w25qxx.hspi1, &cmd, sizeof(cmd), HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
-        printf(">> BSP_W25Qxx_Statue1_Reg HAL_SPI_Transmit error, cmd is : 0x%x failed, state: 0x%x\n", cmd, state);
-        goto END;
+        printf(">> Get_SR1's HAL_SPI_Transmit Error <<\n");
+        goto EXIT;
     }
-    state = HAL_SPI_Receive(g_w25qxx.hspi, &status_reg, sizeof(status_reg), HAL_MAX_DELAY);
+    state = HAL_SPI_Receive(w25qxx.hspi1, &SR1, sizeof(SR1), HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
-        status_reg = 0xFF;
-        printf(">> BSP_W25Qxx_Statue1_Reg HAL_SPI_Receive error, cmd is : 0x%x failed, state: 0x%x\n", cmd, state);
-        goto END;
+        SR1 = 0xFF;
+        printf(">> Get_SR1's HAL_SPI_Receive Error <<\n");
+        goto EXIT;
     }
 
-END:
+EXIT:
     BSP_W25Qxx_CS_Disable();
-    return status_reg;
+    printf(">> BSP_W25Qxx_SR1: 0x%x <<\n", SR1);
+    return SR1;
 }
 
 void BSP_W25Qxx_Write_Enable(void)
 {
-    if (!g_is_init)
+    if (w25qxx.is_init == false)
         return;
-    uint8_t cmd = CMD_W25QXX_WRITE_ENABLE;
+
     BSP_W25Qxx_CS_Enable();
-    HAL_StatusTypeDef state = HAL_SPI_Transmit(g_w25qxx.hspi, &cmd, sizeof(cmd), HAL_MAX_DELAY);
+
+    uint8_t cmd = CMD_W25Qxx_WRITE_ENABLE;
+    HAL_StatusTypeDef state = HAL_OK;
+
+    state = HAL_SPI_Transmit(w25qxx.hspi1, &cmd, sizeof(cmd), HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
-        printf(">> BSP_W25Qxx_Write_Enable HAL_SPI_Transmit error, cmd is : 0x%x failed, state: 0x%x\n", cmd, state);
+        printf(">> Write_Enable's HAL_SPI_Transmit Error <<\n");
+        goto EXIT;
     }
+    printf(">> BSP_W25Qxx_Write_Enable Success <<\n");
+EXIT:
     BSP_W25Qxx_CS_Disable();
 }
 
 void BSP_W25Qxx_Write_Disable(void)
 {
-    if (!g_is_init)
+    if (w25qxx.is_init == false)
         return;
-    uint8_t cmd = CMD_W25QXX_WRITE_DISABLE;
+
     BSP_W25Qxx_CS_Enable();
-    HAL_StatusTypeDef state = HAL_SPI_Transmit(g_w25qxx.hspi, &cmd, sizeof(cmd), HAL_MAX_DELAY);
+
+    uint8_t cmd = CMD_W25Qxx_WRITE_DISABLE;
+    HAL_StatusTypeDef state = HAL_OK;
+
+    state = HAL_SPI_Transmit(w25qxx.hspi1, &cmd, sizeof(cmd), HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
-        printf(">> BSP_W25Qxx_Write_Enable HAL_SPI_Transmit error, cmd is : 0x%x failed, state: 0x%x\n", cmd, state);
+        printf(">> Write_Disable's HAL_SPI_Transmit Error <<\n");
+        goto EXIT;
     }
+    printf(">> BSP_W25Qxx_Write_Disable Success <<\n");
+EXIT:
     BSP_W25Qxx_CS_Disable();
 }
 
-void BSP_W25Qxx_Waitfor_Write_Complete(void)
+void BSP_W25Qxx_Wait_BUSY(void)
 {
-    if (!g_is_init)
+    if (w25qxx.is_init == false)
         return;
-    // while (BSP_W25Qxx_Statue1_Reg() & W25Qxx_STATUS_BUSY)
-    //     ;
 
-    int cnt  = 0;
-    printf(">> 整盘擦除中\n");
-    while (BSP_W25Qxx_Statue1_Reg() & W25Qxx_STATUS_BUSY)
-    {
-        printf(".");
-        cnt++;
-        LED_Blink(LED1, 1, 500);
-    }
-    printf("\n>> 整盘擦除完成, 花费时间: %dS\n", cnt);
-}
-
-void BSP_W25Qxx_Waitfor_Write_Complete_V2(void)
-{
-    if (!g_is_init)
-        return;
-    uint8_t cmd = CMD_W25QXX_READ_STATUS_REG1;
-    uint8_t reg1 = 0xFF;
     BSP_W25Qxx_CS_Enable();
-    HAL_StatusTypeDef state = HAL_SPI_Transmit(g_w25qxx.hspi, &cmd, sizeof(cmd), HAL_MAX_DELAY);
+
+    uint8_t cmd = CMD_W25Qxx_READ_SR1;
+    uint8_t SR1 = 0xFF;
+    HAL_StatusTypeDef state = HAL_OK;
+
+    state = HAL_SPI_Transmit(w25qxx.hspi1, &cmd, sizeof(cmd), HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
-        printf(">> BSP_W25Qxx_Waitfor_Write_Complete_V2 HAL_SPI_Transmit error, cmd is : 0x%x failed, state: 0x%x\n", cmd, state);
-        goto END;
+        printf(">> Wait_Write's HAL_SPI_Transmit Error <<\n");
+        goto EXIT;
     }
+
     do
     {
-        HAL_SPI_TransmitReceive(g_w25qxx.hspi, &dummy, &reg1, sizeof(dummy), HAL_MAX_DELAY);
-    } while (reg1 & W25Qxx_STATUS_BUSY);
-END:
+        state = HAL_SPI_Receive(w25qxx.hspi1, &SR1, sizeof(SR1), HAL_MAX_DELAY);
+        if (state != HAL_OK)
+        {
+            printf(">> Wait_Write's HAL_SPI_Receive Error <<\n");
+            goto EXIT;
+        }
+    } while (SR1 & W25Qxx_WRITE_BUSY_BIT);
+
+EXIT:
     BSP_W25Qxx_CS_Disable();
 }
 
 void BSP_W25Qxx_Sector_Erase(uint32_t sector_address)
 {
-    if (!g_is_init)
-        return;
-    if (sector_address & SECTOR_ADDRESS_MASK)
+    if (w25qxx.is_init == false) return;
+
+    if (sector_address & W25Qxx_SECTOR_ADDRESS_MASK)
     {
-        printf(">>> BSP_W25Qxx_Sector_Erase error, address 0x%x not sector aligned\n", sector_address);
+        printf(">> Sector Erase Error: address(0x%x) is not sector aligned <<\n", sector_address);
         return;
-    }
-    if (sector_address >= g_w25qxx.mem_total_size)
-    {
-        printf(">>> BSP_W25Qxx_Sector_Erase error, address 0x%x out of range max flash size\n", sector_address);
-        return;
-    }
-    // cmd[0] = CMD_W25QXX_SECTOR_ERASE;
-    // cmd[1] = (sector_address>>16)
-    // 1. 检测WEL位是否被设置1，如果为0才需要设置 2. 设置
-    if (!BSP_W25Qxx_Is_Wel_Enable())
-    {
-        BSP_W25Qxx_Write_Enable();
     }
 
-    uint8_t cmd[4] = {CMD_W25QXX_SECTOR_ERASE, (sector_address >> 16), (sector_address >> 8), sector_address};
+    if (sector_address > w25qxx.mem_total_size)
+    {
+        printf(">> Sector Erase Error: address(0x%x) is out of flash max size range <<\n", sector_address);
+        return;
+    }
+
+    uint8_t cmd[4] = {CMD_W25Qxx_SECTOR_ERASE, (sector_address >> 16), (sector_address >> 8), (sector_address)};
+    HAL_StatusTypeDef state = HAL_OK;
+
+    if (BSP_W25Qxx_WEL_Is_Enable() == false) BSP_W25Qxx_Write_Enable();
+
     BSP_W25Qxx_CS_Enable();
-    HAL_StatusTypeDef state = HAL_SPI_Transmit(g_w25qxx.hspi, cmd, sizeof(cmd) / sizeof(cmd[0]), HAL_MAX_DELAY);
+
+    state = HAL_SPI_Transmit(w25qxx.hspi1, cmd, sizeof(cmd)/sizeof(cmd[0]), HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
-        printf(">> BSP_W25Qxx_Sector_Erase HAL_SPI_Transmit error, cmd is : 0x%x failed, state: 0x%x\n", cmd[0], state);
-        goto END;
+        printf(">> Sector_Erase's HAL_SPI_Transmit Error <<\n");
+        goto EXIT;
     }
-    printf(">> BSP_W25Qxx_Sector_Erase success\n"); // 擦除其实没有成功！！！！
-END:
-    BSP_W25Qxx_CS_Disable();
 
-    if (state == HAL_OK)
-        BSP_W25Qxx_Waitfor_Write_Complete_V2();
+EXIT:
+    BSP_W25Qxx_CS_Disable();
+    if (state != HAL_OK) return;
+    BSP_W25Qxx_Wait_BUSY();
 }
 
-void BSP_W25Qxx_Chip_Erase(void)
+bool BSP_W25Qxx_Read_Data(uint32_t data_address, uint8_t *rx_buffer, uint32_t rx_size)
 {
-    if (!g_is_init)
-        return;
+    if (w25qxx.is_init == false) return false;
 
-    // 1. 检测WEL位是否被设置1，如果为0才需要设置 2. 设置
-    if (!BSP_W25Qxx_Is_Wel_Enable())
-    {
-        BSP_W25Qxx_Write_Enable();
-    }
+    if (rx_buffer == NULL || rx_size == 0) return false;
 
-    // 正片擦除的逻辑
-    uint8_t cmd = CMD_W25QXX_CHIP_ERASE;
-    BSP_W25Qxx_CS_Enable();
-    HAL_StatusTypeDef state = HAL_SPI_Transmit(g_w25qxx.hspi, &cmd, sizeof(cmd), HAL_MAX_DELAY);
-    if (state != HAL_OK)
-    {
-        printf(">> BSP_W25Qxx_Chip_Erase HAL_SPI_Transmit error, cmd is : 0x%x failed, state: 0x%x\n", cmd, state);
-    }
-    BSP_W25Qxx_CS_Disable();
-    if (state == HAL_OK)
-        BSP_W25Qxx_Waitfor_Write_Complete();
-}
+    if (BSP_W25Qxx_Write_Is_Busy()) BSP_W25Qxx_Wait_BUSY();
 
-bool BSP_W25Qxx_Read_Data(uint32_t read_address, uint8_t *rbuffer, uint32_t rsize)
-{
-    if (!g_is_init)
-        return false;
-    if (rbuffer == NULL || rsize == 0)
-        return false;
-    if (read_address + rsize > g_w25qxx.mem_total_size)
-        return false;
-
+    uint8_t cmd[4] = {CMD_W25Qxx_READ_DATA, (data_address >> 16), (data_address >> 8), (data_address)};
+    HAL_StatusTypeDef state = HAL_OK;
     bool ret = true;
-    // 1. 检测W25qxx是否在忙 2. 等待忙完
-    if (BSP_W25Qxx_Is_busy())
-        BSP_W25Qxx_Waitfor_Write_Complete_V2();
 
-    uint8_t cmd[] = {CMD_W25QXX_READ_DATA, (uint8_t)(read_address >> 16), (uint8_t)(read_address >> 8), (uint8_t)(read_address)};
-    uint16_t cmdlen = sizeof(cmd) / sizeof(cmd[0]);
-
-    // 2. 发送
     BSP_W25Qxx_CS_Enable();
-    HAL_StatusTypeDef state = HAL_SPI_Transmit(g_w25qxx.hspi, cmd, cmdlen, HAL_MAX_DELAY);
+
+    state = HAL_SPI_Transmit(w25qxx.hspi1, cmd, sizeof(cmd)/sizeof(cmd[0]), HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
         ret = false;
-        printf(">> BSP_W25Qxx_Read_Data HAL_SPI_Transmit error, cmd is : 0x%x failed, state: 0x%x\n", cmd[0], state);
-        goto END;
+        printf(">> Read_Data's HAL_SPI_Transmit Error <<\n");
+        goto EXIT;
     }
 
-    state = HAL_SPI_Receive(g_w25qxx.hspi, rbuffer, (uint16_t)rsize, HAL_MAX_DELAY);
+    state = HAL_SPI_Receive(w25qxx.hspi1, rx_buffer, rx_size, HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
         ret = false;
-        printf(">> BSP_W25Qxx_Read_Data HAL_SPI_Receive error, cmd is : 0x%x failed, state: 0x%x\n", cmd[0], state);
-        goto END;
+        printf(">> Read_Data's HAL_SPI_Receive Error <<\n");
+        goto EXIT;
     }
-    printf(">> BSP_W25Qxx_Read_Data success, cmd is : 0x%x, state: 0x%x\n", cmd[0], state);
 
-END:
+EXIT:
     BSP_W25Qxx_CS_Disable();
+    if (ret == true) printf(">> Read Data Success <<\n");
+    else printf(">> Read Data Error <<\n");
     return ret;
 }
 
-// 这个是对页进行写入的函数
-bool BSP_W25Qxx_Page_Program(uint32_t page_address, uint16_t page_inner_offset, uint8_t *wbuffer, uint16_t wsize)
+bool BSP_W25Qxx_Page_Program(uint32_t page_address, uint16_t page_offset, uint8_t *wx_buffer, uint32_t wx_size)
 {
-    if (!g_is_init)
+    if (w25qxx.is_init == false) return false;
+    if (wx_buffer == NULL || wx_size == 0) return false;
+    if (wx_size + page_offset > w25qxx.page_size) 
+    {
+        printf(">> Page Program Error: address_total(0x%x) is out of range <<\n", page_address);
         return false;
-    if (wbuffer == NULL || wsize == 0)
-        return false;
-    // 不能超过一页大小
-    if (page_inner_offset + wsize > g_w25qxx.page_size)
-        return false;
-    // 真实的写入地址
-    uint32_t write_address = page_address * g_w25qxx.page_size + page_inner_offset;
+    }
 
+    uint8_t cmd[4] = {CMD_W25Qxx_PAGE_PROGRAM, (page_address >> 16), (page_address >> 8), (page_address)};
+    HAL_StatusTypeDef state = HAL_OK;
     bool ret = true;
 
-    // 构建指令
-    uint8_t cmd[] = {CMD_W25QXX_PAGE_PROGRAM, (uint8_t)(write_address >> 16), (uint8_t)(write_address >> 8), (uint8_t)(write_address)};
-    uint16_t cmdlen = sizeof(cmd) / sizeof(cmd[0]);
-
-    // 发送指令，首选需要关闭禁止写入
-    // 1. 检测WEL位是否被设置1，如果为0才需要设置 2. 设置
-    if (!BSP_W25Qxx_Is_Wel_Enable())
-    {
-        BSP_W25Qxx_Write_Enable();
-    }
+    if (BSP_W25Qxx_WEL_Is_Enable() == false) BSP_W25Qxx_Write_Enable();
 
     BSP_W25Qxx_CS_Enable();
 
-    HAL_StatusTypeDef state = HAL_SPI_Transmit(g_w25qxx.hspi, cmd, cmdlen, HAL_MAX_DELAY);
+    state = HAL_SPI_Transmit(w25qxx.hspi1, cmd, sizeof(cmd)/sizeof(cmd[0]), HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
         ret = false;
-        printf(">> BSP_W25Qxx_Page_Program HAL_SPI_Transmit cmd error, cmd is : 0x%x failed, state: 0x%x\n", cmd[0], state);
-        goto END;
+        printf(">> Page_Program's HAL_SPI_Transmit_cmd Error <<\n");
+        goto EXIT;
     }
 
-    // 发送数据
-    state = HAL_SPI_Transmit(g_w25qxx.hspi, wbuffer, wsize, HAL_MAX_DELAY);
+    state = HAL_SPI_Transmit(w25qxx.hspi1, wx_buffer, wx_size, HAL_MAX_DELAY);
     if (state != HAL_OK)
     {
         ret = false;
-        printf(">> BSP_W25Qxx_Page_Program HAL_SPI_Transmit data error, cmd is : 0x%x failed, state: 0x%x\n", cmd[0], state);
-        goto END;
+        printf(">> Page_Program's HAL_SPI_Transmit_wx_buffer Error <<\n");
+        goto EXIT;
     }
-    printf(">> BSP_W25Qxx_Page_Program HAL_SPI_Transmit cmd && data success, cmd is : 0x%x, state: 0x%x\n", cmd[0], state);
 
-END:
+EXIT:
     BSP_W25Qxx_CS_Disable();
-    if (state == HAL_OK)
-        BSP_W25Qxx_Waitfor_Write_Complete_V2();
+    if (ret == true) printf(">> Page_Program Success <<\n");
+    BSP_W25Qxx_Wait_BUSY();
     return ret;
 }
 
-bool BSP_W25Qxx_Write_Data(uint32_t write_address, uint8_t *wbuffer, uint32_t wsize)
+bool BSP_W25Qxx_Write_Data(uint32_t page_address, uint8_t *wx_buffer, uint32_t wx_size)
 {
-    if (!g_is_init)
-        return false;
-    if (wbuffer == NULL || wsize == 0)
-        return false;
-    if (write_address + wsize > g_w25qxx.mem_total_size)
+    if (w25qxx.is_init == false) return false;
+
+    if (wx_buffer == NULL || wx_size == 0) return false;
+
+    if (page_address + wx_size > w25qxx.mem_total_size)
     {
-        printf("BSP_W25Qxx_Write_Data error, address out range!\n");
+        printf(">> Write Data Error: address_total(0x%x) is out of range <<\n", page_address);
         return false;
     }
 
-    // 已经写入的字节数
-    uint32_t written_bytes = 0;
+    uint32_t written_byte = 0;
+    bool ret = false;
 
-    while (written_bytes < wsize)
+    while (written_byte < wx_size)
     {
-        // 计算剩余数据
-        uint32_t remaining_data = wsize - written_bytes;
+        uint32_t remaining_data  = wx_size - written_byte;
+        uint32_t page_offset     = page_address % w25qxx.page_size;
+        uint32_t remaining_space = w25qxx.page_size - page_offset;
+        uint32_t to_write        = (remaining_data > remaining_space) ? remaining_space : remaining_data;
 
-        // 计算写入的页号
-        uint16_t page_number = write_address / g_w25qxx.page_size;
-        // 计算页内偏移
-        uint16_t page_inner_offset = write_address % g_w25qxx.page_size;
-        // 当前页的剩余空间
-        uint16_t remaining_space = g_w25qxx.page_size - page_inner_offset;
+        /* 第一个参数要传绝对地址（Page_Program 内部直接拼成 24 位地址发给 Flash） */
+        ret = BSP_W25Qxx_Page_Program(page_address, (uint16_t)page_offset,
+                                      &wx_buffer[written_byte], to_write);
+        if (ret == false) break;
 
-        // 计算本次写入的数据量
-        uint16_t to_written = remaining_data > remaining_space ? remaining_space : remaining_data;
-
-        // 进行页编程
-        bool ret = BSP_W25Qxx_Page_Program(page_number, page_inner_offset, &wbuffer[written_bytes], to_written);
-        (void)ret;
-
-        // 更新已经写入的数据量
-        written_bytes += to_written;
-        // 更新当前写入地址
-        write_address += to_written;
+        written_byte += to_write;
+        page_address += to_write;
     }
-    return true;
+    return ret;
 }
