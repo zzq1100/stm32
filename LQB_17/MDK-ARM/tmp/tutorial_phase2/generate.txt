@@ -1,0 +1,8 @@
+config load "E:\STM32Project\LQB_17\MDK-ARM\LQB17_Tutorial\Firmware\LQB17_Tutorial.ioc"
+project name LQB17_Tutorial
+project path "E:\STM32Project\LQB_17\MDK-ARM\LQB17_Tutorial\Firmware"
+project toolchain "MDK-ARM V5.32"
+project couplefilesbyip 1
+config save "E:\STM32Project\LQB_17\MDK-ARM\LQB17_Tutorial\Firmware\LQB17_Tutorial.ioc"
+project generate
+exit

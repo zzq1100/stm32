@@ -1,0 +1,5 @@
+PASS KEYS: bounce, held/no-repeat, release duration, 2s boundaries, startup held, four keys, tick wrap
+PASS ADC/MEASUREMENT: endpoints, failure validity, timeout cleanup, calibration slope/rejection, 800/8000 bounds
+PASS CAPTURE: 17 edges, averaging, timer/tick wrap, low frequency, timeout/restart, overcapture, zero delta, IRQ restore
+PASS PWM: 5/50/95%, clamp, 9001 duty steps rounding, configuration/start failure (not physical waveform)
+ALL PHASE3 HOST TESTS PASSED

@@ -1,0 +1,7 @@
+PASS SETTINGS: defaults, drafts/commit, six ranges, selectors, mode, release-only, cross-page cancellation
+PASS CONTROL: 1pct/s both directions, deadband endpoints, limits, invalid pressure, target tracking lifecycle
+PASS TOTALIZER: 100ms units, exact litre carry, fractional flow, 9999999+, saturation, full reset
+PASS ALARMS: strict thresholds, 2000/2001ms, recovery/restart, tick wrap, persistent alarms, parameter changes
+PASS DISPLAY: exact title/data coordinates, units/case, drafts, 20-column padding, long totals, shortened fields
+PASS APP: real final entry, startup, commit/ramp/LD4, fresh release calibration, cross-page cancellation, reset, invalid ADC, overruns, tick wrap
+ALL PHASE4 HOST TESTS PASSED

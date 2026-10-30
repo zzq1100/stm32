@@ -1,0 +1,374 @@
+# 10｜GPIO、LED与573锁存器
+
+> **完整工程进度**：本篇按第二阶段讲解；当前第17～22篇和LQB17_Final已完成。文中阶段测试的范围保持不变，最终业务见[第21篇](21-三页面显示、主程序调度与最终工程集成-精讲博客版.md)。
+
+> **平台/版本**：CT117E-M4 V1.1 / STM32G431RBT6，STM32CubeMX 6.17.0、STM32CubeG4 V1.6.3、Keil ARM Compiler 5.06 update 7。
+> **适合读者**：只会C语言，按本文步骤配置、观察和理解外设。
+> **本篇技术点与效果**：从低有效LED电路理解GPIO输出、位运算和锁存时序，完成可复用bsp_led。
+> **需求关联**：P06-08、P06-13；P06-09～P06-12的输出基础，可在[需求追踪表](07-需求追踪表与工程约定-精讲博客版.md)定位原句。
+> **验证边界**：第二阶段工程已进行软件构建与主机测试；文中的接线、下载、屏幕和灯的现象是供你操作的预期，尚未代你上板验证。阶段目标是基础验证，不是完整竞赛固件。
+> **版本衔接**：这些篇章保留第二阶段的学习范围；当前配套工程已扩展第三阶段，共用Core增加ADC/TIM初始化。Phase2_SelfTest仍保留基础验证行为，新增外设操作见第13～16篇；文中完整代码已同步到当前源码。
+
+[阅读目录](00-阅读路线与交付状态-精讲博客版.md) · [第二阶段实操与验证记录](../Tests/第二阶段实操与验证记录.md)
+
+## 一、题目中的“灯亮”怎样变成电流
+
+第6页要求LD1～LD4反馈状态，LD5～LD8始终灭。报警是否成立属于以后alarms模块的职责；现在先解决“程序说LD1亮时，板上确实只亮LD1，并且不破坏LCD”。
+
+V1.1电路中LED通过限流电阻接电源，另一侧由U1的输出控制。输出低时形成从电源经电阻、LED到低电平端的电流通路，因此点亮；输出高时两端没有足够的正向压差，因此熄灭。限流电阻用来限制电流，不是软件中的延时元件。电路决定了**低有效**，不能凭“1表示开”的日常习惯直接写高电平。
+
+我们给应用一个方便的约定：mask的bit0表示LD1，bit7表示LD8；位为1表示希望亮。驱动再把它转换成电气上的0。这样报警模块只表达哪些灯亮，不需要反复思考低有效接线。
+
+| 调用参数mask | 希望点亮 | 实际送573的数据 |
+|---|---|---|
+| 0x00 | 全灭 | 0xFF |
+| 0x01 | LD1 | 0xFE |
+| 0x0A | LD2、LD4 | 0xF5 |
+| 0x0F | LD1～LD4 | 0xF0 |
+
+驱动可以表达8个灯，但竞赛应用必须只使用低4位，保证LD5～LD8灭。现在测试程序也只循环低4位；这不是报警功能已经完成，而是先验证灯号与逻辑位的对应关系。
+
+**知识小结**：结论：软件逻辑“亮”与引脚电平要分开。 原因：板上LED是低有效，取反应集中在驱动层。 关键参数：bit0→LD1，bit7→LD8，1表示希望亮。 常见误区：在报警代码中也取反一次，导致驱动再取反后全部相反。
+
+## 二、GPIO输出为什么要先初始化
+
+GPIO可以理解为芯片内部与外部引脚之间的一组开关。输出模式下，输出数据寄存器决定输出电路驱动高还是低；输入模式下，程序读取输入寄存器观察引脚电平。模拟模式和复用模式又有不同内部路径，不能只写ODR就期待所有配置下的引脚都输出。
+
+本模块使用推挽输出：内部输出级既能主动驱动高，也能主动驱动低。开漏输出只能主动拉低，释放时要依靠上拉等外部条件形成高电平；本板LCD/LED并行数据总线按推挽配置。
+
+配置一个GPIO要说明四件事：外设时钟是否开启、初始输出值、引脚模式、上下拉及输出速度。这里速度表示输出边沿驱动特性，**不是LED闪烁频率**；闪烁每秒一次由软件计时决定。
+
+CubeMX生成的MX_GPIO_Init先开启GPIOC/GPIOF/GPIOA/GPIOD时钟，再把PC8～PC15的输出数据预置为高、PD2预置为低，最后配置为输出。先装入安全数据再切换模式，可以避免输出刚接管时先短暂使用另一组数据。
+
+HAL_GPIO_Init的第一个参数是端口地址，第二个参数指向GPIO_InitTypeDef配置结构；HAL_GPIO_WritePin的三个参数依次是端口、引脚位掩码、电平。GPIO_PIN_8是第8位的掩码，不是数字8；错误传8实际上对应bit3。
+
+### 配置结果：实际生成的gpio.c
+
+这里只阅读生成文件，不把它复制成第二个BSP初始化。LCD_Init稍后会把PC0～PC15配置成其数据总线，LED模块依然使用其中PC8～PC15；PD2不由LCD驱动改写。
+
+### gpio.c 完整文件
+
+[打开实际源码](../Firmware/Core/Src/gpio.c)
+
+```c
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file    gpio.c
+  * @brief   This file provides code for the configuration
+  *          of all used GPIO pins.
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2026 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+/* Includes ------------------------------------------------------------------*/
+#include "gpio.h"
+
+/* USER CODE BEGIN 0 */
+
+/* USER CODE END 0 */
+
+/*----------------------------------------------------------------------------*/
+/* Configure GPIO                                                             */
+/*----------------------------------------------------------------------------*/
+/* USER CODE BEGIN 1 */
+
+/* USER CODE END 1 */
+
+/** Configure pins as
+        * Analog
+        * Input
+        * Output
+        * EVENT_OUT
+        * EXTI
+*/
+void MX_GPIO_Init(void)
+{
+
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, LED_D5_Pin|LED_D6_Pin|LED_D7_Pin|LED_D0_Pin
+                          |LED_D1_Pin|LED_D2_Pin|LED_D3_Pin|LED_D4_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LED_LE_GPIO_Port, LED_LE_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : LED_D5_Pin LED_D6_Pin LED_D7_Pin LED_D0_Pin
+                           LED_D1_Pin LED_D2_Pin LED_D3_Pin LED_D4_Pin */
+  GPIO_InitStruct.Pin = LED_D5_Pin|LED_D6_Pin|LED_D7_Pin|LED_D0_Pin
+                          |LED_D1_Pin|LED_D2_Pin|LED_D3_Pin|LED_D4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : KEY_B4_Pin */
+  GPIO_InitStruct.Pin = KEY_B4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(KEY_B4_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : KEY_B1_Pin KEY_B2_Pin KEY_B3_Pin */
+  GPIO_InitStruct.Pin = KEY_B1_Pin|KEY_B2_Pin|KEY_B3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LED_LE_Pin */
+  GPIO_InitStruct.Pin = LED_LE_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(LED_LE_GPIO_Port, &GPIO_InitStruct);
+
+}
+
+/* USER CODE BEGIN 2 */
+
+/* USER CODE END 2 */
+```
+想核对HAL做了什么，可在Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_gpio.c搜索HAL_GPIO_Init，逐项对照MODER、OTYPER、OSPEEDR、PUPDR寄存器。不要第一次就读完该文件所有函数。
+
+`GPIOC->ODR`中的GPIOC是指向GPIO寄存器结构体的指针，ODR是输出数据寄存器成员。寄存器布局定义在Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g431xx.h的GPIO_TypeDef；硬件含义查RM0440的GPIO章节。G4的ODR偏移是0x14，bits15～0对应16个输出数据位，上半部为保留位。
+
+读ODR得到输出锁存的数据，读IDR得到输入路径观察的引脚状态。它们通常有关联，但不能把ODR当成外部电压测量仪；引脚模式或外部电路会影响实际引脚状态。
+
+**知识小结**：结论：先开时钟、设初值、配模式，再操作数据。 原因：寄存器值必须通过正确输出通路才能影响引脚。 关键参数：PC8～15推挽高初值、PD2推挽低初值；ODR偏移0x14。 常见误区：把GPIO速度当闪烁频率，或把GPIO_PIN_8写成整数8。
+
+## 三、573怎样让LCD和LED共用一组线
+
+PC8～PC15不是直接接LED，它们接U1的8位输入。U1是SN74HC573锁存器，相当于保存8位状态的小硬件。原理图中输出使能OE接低，所以输出处于使能状态；PD2连接锁存使能LE。
+
+查资源包74HC_HCT573.pdf第6页功能表：LE为高时，输出随输入变化，这叫透明；LE为低时，保持最后的数据。它并不是只有一个瞬间才看输入的边沿触发寄存器，高电平期间输入改变，输出也会改变。
+
+LCD通过PC0～PC15传输数据。如果PD2一直高，LCD每次写数据都可能改动LED，因此会乱闪。正确做法是平时保持PD2低；更新灯时先准备LED数据，打开LE，等待足够脉宽，再关闭LE，最后恢复总线。
+
+```mermaid
+sequenceDiagram
+    participant App as 主循环
+    participant PC as GPIOC数据口
+    participant LE as PD2/LE
+    participant L as 573输出与LED
+    App->>PC: 保存ODR，写LED数据
+    Note over PC,LE: 保留建立时间
+    App->>LE: 拉高
+    LE->>L: 透明，输出跟随输入
+    Note over LE,L: 保留高电平脉宽
+    App->>LE: 拉低
+    LE->>L: 保持LED数据
+    Note over PC,LE: 保留保持时间
+    App->>PC: 恢复ODR，LCD继续使用总线
+```
+
+建立时间指在采样/锁存前数据应提前稳定，保持时间指之后还要维持多久。我们的Latch_Wait在三个位置留出余量。这里使用16次带volatile循环变量的NOP等待，配合DSB确保前面的寄存器写完成；不是精确的微秒定时器。
+
+`__NOP()`是CPU空操作指令，`__DSB()`是数据同步屏障。它们来自CMSIS。NOP不会让LED自动亮灭，DSB也不会主动保证整个外部电路已经达到某个特定电压；它们只是配合真实的GPIO写和等待完成顺序约束。
+
+80MHz时一个周期12.5ns，但循环包含取数、比较、跳转等操作，所以不能把16次循环准确宣称为200ns。资源包时序表对不同供电给出不同最小值，也不能直接把4.5V测试条件的数字当成3.3V精确值。本设计留出保守余量；无仪器时能做功能观察，不能声称已测出脉宽。
+
+LED和LCD接口都只允许在主循环调用。保存ODR不等于加锁：若LCD在中断里穿插写PC，再恢复旧值会覆盖它的新操作。本工程通过调用约定避免这种并发，后续中断只记录事件，不直接画屏或更新灯。
+
+**知识小结**：结论：PD2低时锁住灯状态，共用数据线才可服务LCD。 原因：573高电平透明、低电平保持。 关键参数：数据建立→LE高→LE低→数据保持→恢复PC；全部在主循环。 常见误区：只加几个NOP就认为任意并发、任意电压和编译选项下的时序都已保证。
+
+## 四、逐步推导这一行位运算，再看完整代码
+
+需求是：只借用PC8～PC15写8位LED数据，PC0～PC7保持原值；操作完成后恢复整个PC输出数据。于是需要一个saved变量保存原ODR，一个8位active_low表示取反后的LED数据，一个32位led_bus对齐到PC8～PC15。
+
+假设saved=0x1234，希望LD1亮，mask=0x01：
+
+```text
+mask                          = 0000 0001
+(uint8_t)(~mask)               = 1111 1110 = 0xFE
+(uint32_t)active_low << 8      = 0xFE00
+saved & 0x00FFU                = 0x0034
+0x0034 | 0xFE00                = 0xFE34
+锁存后 GPIOC->ODR = saved     = 0x1234
+```
+
+`&`与掩码保留低8位；`<<8`把8个灯的数据移到端口高8位；`|`把互不重叠的两部分合起来。这里是按位或，不是逻辑或`||`。
+
+为什么先转uint8_t？C会对较小整数做整数提升，`~mask`并不自动保持8位宽；转回uint8_t明确取其低8位。为什么再转uint32_t后左移？是为了明确用32位无符号量完成端口对齐，避免依赖提升后符号类型。为什么0x00FF后加U？U表示无符号整数常量，便于与无符号寄存器数据做位运算；它不表示8位，也不表示“微秒”。
+
+这一段核心代码直接来自下方完整模块：
+
+```c
+    saved = GPIOC->ODR;
+    active_low = (uint8_t)(~mask);  /* LED 低电平亮：逻辑“亮”转换为 0。 */
+    led_bus = (uint32_t)active_low << 8;
+    GPIOC->ODR = (saved & 0x00FFU) | led_bus;
+```
+### 接口与状态为什么这样设计
+
+`BSP_LED_Init(void)`在MX_GPIO_Init之后、LCD_Init之前调用一次，把PD2先拉低并强制写一次全灭。不能只依赖static变量初值0而跳过首次全灭写入，因为硬件锁存器的上电状态不能由C变量代替。
+
+`BSP_LED_Write(uint8_t mask)`没有返回值，调用者负责保证已初始化且在主循环调用。last_mask记录上次逻辑状态，has_written区分“已经写过全灭”和“还没写过”。只有写过且值没变化才直接返回，减少总线占用。重新Init会清掉has_written，从而再次强制刷新硬件。
+
+### bsp_led.h 完整文件
+
+[打开实际源码](../Firmware/BSP_Drivers/Inc/bsp_led.h)
+
+```c
+#ifndef BSP_LED_H
+#define BSP_LED_H
+
+#include <stdint.h>
+
+/* 前提：CubeMX 生成的 MX_GPIO_Init 已配置 PC8~PC15、PD2。
+ * 初始化主动锁存全灭，不能依赖外部锁存器的上电内容。 */
+void BSP_LED_Init(void);
+
+/* bit0~bit7 对应 LD1~LD8：1 表示希望亮，0 表示希望灭。
+ * 只能在主循环调用；LCD 和 LED 共用 PC 口，不能从中断并发访问。
+ * 竞赛业务层必须保持 bit4~bit7 为 0。 */
+void BSP_LED_Write(uint8_t mask);
+
+#endif
+```
+
+### bsp_led.c 完整文件
+
+[打开实际源码](../Firmware/BSP_Drivers/Src/bsp_led.c)
+
+```c
+#include "bsp_led.h"
+#include "main.h"
+
+static uint8_t last_mask;
+static uint8_t has_written;
+
+static void Latch_Wait(void)
+{
+    volatile uint32_t i;
+    /* 给 573 的建立、脉宽和保持时间留余量。
+     * volatile 保留循环，NOP 保留空操作；这是短暂总线等待，不是毫秒延时。 */
+    for (i = 0U; i < 16U; ++i) {
+        __NOP();
+    }
+}
+
+void BSP_LED_Init(void)
+{
+    has_written = 0U;
+    HAL_GPIO_WritePin(LED_LE_GPIO_Port, LED_LE_Pin, GPIO_PIN_RESET);
+    BSP_LED_Write(0U);
+}
+
+void BSP_LED_Write(uint8_t mask)
+{
+    uint32_t saved;
+    uint32_t led_bus;
+    uint8_t active_low;
+
+    /* 锁存器会保持旧输出；状态没变时无需重复占用 LCD 总线。 */
+    if (has_written && mask == last_mask) {
+        return;
+    }
+
+    saved = GPIOC->ODR;
+    active_low = (uint8_t)(~mask);  /* LED 低电平亮：逻辑“亮”转换为 0。 */
+    led_bus = (uint32_t)active_low << 8;
+    GPIOC->ODR = (saved & 0x00FFU) | led_bus;
+    __DSB();                       /* 确保数据口写入完成后再打开锁存器。 */
+    Latch_Wait();
+
+    HAL_GPIO_WritePin(LED_LE_GPIO_Port, LED_LE_Pin, GPIO_PIN_SET);
+    __DSB();
+    Latch_Wait();                   /* LE 高期间，输出跟随数据。 */
+    HAL_GPIO_WritePin(LED_LE_GPIO_Port, LED_LE_Pin, GPIO_PIN_RESET);
+    __DSB();
+    Latch_Wait();                   /* LE 变低后保持数据，再归还总线。 */
+
+    GPIOC->ODR = saved;
+    last_mask = mask;
+    has_written = 1U;
+}
+```
+
+**知识小结**：结论：位运算分别完成保留、反相、移位和合并。 原因：LED占端口高8位且低有效，LCD又需要原总线状态。 关键参数：0x00FFU保留低8位，uint8_t截断反相结果，左移8位。 常见误区：把~的结果默认当8位，或用逻辑或代替按位或。
+
+## 五、怎样验证与排错
+
+最小观察是初始化后把逻辑mask设为1，看到LD1亮。配套测试入口已经完成这个调用，不需要把另一份LED代码复制到main里。进一步测试每秒轮换mask=1、2、4、8，同时LCD持续变化，从而验证两者共用总线时的表现。
+
+| 操作 | 观察位置 | 预期 | 不符合先查 |
+|---|---|---|---|
+| 下载第二阶段HEX并复位 | LD1～LD4 | 一次一个，约1秒换到下一个 | 是否仍下载旧工程、是否执行App_Run |
+| 同时看动态LCD | 灯与屏幕 | 灯不跟随字符绘制乱闪 | PD2是否保持低、LCD是否在中断里调用 |
+| 查看phase2_led_mask | Keil Watch | 1→2→4→8循环 | timer_led周期、移位和led_index范围 |
+| 看LD5～LD8 | 板上LED | 始终灭 | mask高4位是否被置位、低有效是否重复取反 |
+| 在驱动保存点观察ODR | Keil寄存器/Watch | 写灯后恢复saved | 是否改了保存恢复、端口是否弄错 |
+
+主机测试用假的GPIO寄存器与锁存采样器，已经检查逻辑极性、位对应、低位保留、ODR恢复、相同mask不重复写及重新初始化强制写。它无法验证真实LE脉宽、电流和导线连接。
+
+若所有灯都反着亮，先查逻辑mask和取反次数；若只有灯号颠倒，查bit0对应PC8而非PC15；若单独点灯正确而刷LCD乱闪，优先查LE和并发，不要先修改报警阈值。
+
+**知识小结**：结论：先验证灯号，再验证与LCD同时运行。 原因：共用总线的问题可能只在集成后出现。 关键参数：mask序列1、2、4、8；高4位保持0。 常见误区：主机断言通过就宣称实物时序已经合格。
+
+
+## 一页纸总结
+
+- 题目需要逻辑状态灯，电路决定低电平亮。
+- GPIO时钟、初值、模式在CubeMX生成的gpio.c中完成。
+- PD2低时573保存输出；LED更新时短暂借用PC8～PC15。
+- 写数据前保存ODR，锁存结束后恢复，LCD继续工作。
+- 掩码接口保持“1为亮”，只在驱动里反相。
+- 所有LED/LCD调用在主循环，不能凭保存恢复解决中断竞争。
+- 本模块是后续最终应用复用的bsp_led，测试灯序列放在Tests。
+
+## 关键参数表
+
+| 项目 | 参数与作用 |
+|---|---|
+| 数据位 | PC8～PC15，对应LD1～LD8 |
+| 锁存控制 | PD2，LE高透明、低保持 |
+| 电气极性 | 低电平点亮 |
+| 应用掩码 | 1表示亮；竞赛使用低4位 |
+| ODR | G4偏移0x14，低16位有意义 |
+| 等待 | 每处16次NOP循环，非精确时间承诺 |
+| 调用条件 | GPIO初始化后、仅主循环 |
+
+## 自测问题
+
+1. 为什么灯亮写的是0，却让应用mask写1？
+2. PD2一直高会发生什么？
+3. saved & 0x00FFU保留哪组引脚？
+4. uint8_t和数字后缀U有什么区别？
+5. 为什么相同mask首次仍要写硬件？
+6. 保存并恢复ODR是否足以允许中断刷LCD？
+
+<details>
+<summary>展开参考答案</summary>
+
+1. 应用表达逻辑意图，驱动根据低有效电路转换为真实电平，职责清楚且只反相一次。
+
+2. 573保持透明，LCD写PC口的数据可能直接改变LED输出。
+
+3. 保留PC0～PC7的输出数据，高8位留给LED数据。
+
+4. uint8_t明确8位无符号类型；U选择无符号整数常量类型，并不指定8位宽。
+
+5. C变量初值不能证明锁存器状态，has_written记录是否实际写过。
+
+6. 不足，恢复旧值可能覆盖中断的新写入；本工程约定两者都在主循环。
+
+</details>
+
+[回到阅读目录](00-阅读路线与交付状态-精讲博客版.md)

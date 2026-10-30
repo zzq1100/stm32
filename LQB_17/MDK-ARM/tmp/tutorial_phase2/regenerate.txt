@@ -1,0 +1,3 @@
+config load "E:\STM32Project\LQB_17\MDK-ARM\LQB17_Tutorial\Firmware\LQB17_Tutorial.ioc"
+project generate
+exit

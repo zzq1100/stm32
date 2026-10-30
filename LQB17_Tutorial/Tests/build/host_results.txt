@@ -1,0 +1,4 @@
+PASS LED: polarity, bit mapping, bus restore, unchanged mask, reinit
+PASS LCD: coordinates, padding, copy, bounds, ASCII, budget, fairness
+PASS TIME: boundary, no duplicate, phase, invalid period, wrap, independent tasks
+ALL PHASE2 HOST TESTS PASSED
