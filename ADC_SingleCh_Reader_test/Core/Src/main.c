@@ -96,7 +96,8 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   BSP_Usart_Init(&huart1);
-  uint16_t adc_buffer[10];
+  uint16_t adc_buffer = 0;
+  HAL_ADCEx_Calibration_Start(&hadc3);
   printf("ADC Test Start...\n");
   /* USER CODE END 2 */
 
@@ -107,8 +108,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    ADC_Read_Block(&hadc3, adc_buffer);
-    printf("ADC Value: %d , 电压: %f", *adc_buffer, ADC_Code_To_Voltage(*adc_buffer, 3.3f));
+    ADC_Read_Block(&hadc3, &adc_buffer);
+    printf("ADC Value: %d , 电压: %.2f", adc_buffer, ADC_Code_To_Voltage(adc_buffer, 3.3f));
     printf("\n");
     HAL_Delay(1000);
   }
