@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "BSP_Usart_Redir.h"
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +46,7 @@ ADC_HandleTypeDef hadc3;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+volatile bool g_adc_complete_flag = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -98,6 +99,7 @@ int main(void)
   BSP_Usart_Init(&huart1);
   uint16_t adc_buffer = 0;
   HAL_ADCEx_Calibration_Start(&hadc3);
+  HAL_ADC_Start_IT(&hadc3);
   printf("ADC Test Start...\n");
   /* USER CODE END 2 */
 
@@ -105,13 +107,21 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    if (g_adc_complete_flag)
+    {
+      adc_buffer = HAL_ADC_GetValue(&hadc3);
+      printf("ADC Value: %d , 电压: %.2f", adc_buffer, ADC_Code_To_Voltage(adc_buffer, 3.3f));
+      printf("\n");
+      g_adc_complete_flag = false;
+      HAL_ADC_Start_IT(&hadc3); // Restart ADC conversion
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    ADC_Read_Block(&hadc3, &adc_buffer);
-    printf("ADC Value: %d , 电压: %.2f", adc_buffer, ADC_Code_To_Voltage(adc_buffer, 3.3f));
-    printf("\n");
-    HAL_Delay(1000);
+    // ADC_Read_Block(&hadc3, &adc_buffer);
+    // printf("ADC Value: %d , 电压: %.2f", adc_buffer, ADC_Code_To_Voltage(adc_buffer, 3.3f));
+    // printf("\n");
+    // HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
@@ -277,6 +287,14 @@ static void ADC_Read_Block(ADC_HandleTypeDef *hadc, uint16_t *buffer)
 static float ADC_Code_To_Voltage(uint16_t adc_code, float vref)
 {
   return (adc_code * vref) / 4095.0f; // Assuming 12-bit ADC resolution
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+  if (hadc->Instance == ADC3)
+  {
+    g_adc_complete_flag = true;
+  }
 }
 
 /* USER CODE END 4 */
