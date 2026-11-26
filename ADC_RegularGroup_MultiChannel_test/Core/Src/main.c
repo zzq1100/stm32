@@ -48,6 +48,8 @@
 
 /* USER CODE BEGIN PV */
 volatile bool adc_conversion_complete = false;
+volatile bool adc_conversion_half_complete = false;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -101,24 +103,37 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  volatile uint16_t adc_values[4] = {0};
+  volatile uint16_t adc_values[8] = {0};
   const char *channel_names[] = {
       "ADC3 Channel 11",
       "ADC3 Channel 10",
       "ADC3 Channel 5",
       "ADC3 Channel 4"};
   HAL_ADCEx_Calibration_Start(&hadc3);
-  HAL_ADC_Start_DMA(&hadc3, (uint32_t *)adc_values, 4);
+  HAL_ADC_Start_DMA(&hadc3, (uint32_t *)adc_values, 8);
   while (1)
   {
-    if (adc_conversion_complete)
+    if (adc_conversion_half_complete)
     {
-      adc_conversion_complete = false; // Reset the flag
+      adc_conversion_half_complete = false; // Reset the flag
       // Process the ADC data here
+      printf("Half Conversion Complete:\r\n");
       for (uint32_t i = 0; i < 4; i++)
       {
         float voltage = ADC_Value_To_Voltage(adc_values[i]);
         printf("%s: ADC Value = %d, Voltage = %.2f V\r\n", channel_names[i], adc_values[i], voltage);
+      }
+      //HAL_ADC_Start_DMA(&hadc3, (uint32_t *)adc_values, 4);
+    }
+    if (adc_conversion_complete)
+    {
+      adc_conversion_complete = false; // Reset the flag
+      // Process the ADC data here
+      printf("Full Conversion Complete:\r\n");
+      for (uint32_t i = 0; i < 4; i++)
+      {
+        float voltage = ADC_Value_To_Voltage(adc_values[i + 4]);
+        printf("%s: ADC Value = %d, Voltage = %.2f V\r\n", channel_names[i], adc_values[i + 4], voltage);
       }
       //HAL_ADC_Start_DMA(&hadc3, (uint32_t *)adc_values, 4);
     }
@@ -221,6 +236,13 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
   if (hadc->Instance == ADC3)
   {
     adc_conversion_complete = true;
+  }
+}
+void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
+{
+  if (hadc->Instance == ADC3)
+  {
+    adc_conversion_half_complete = true;
   }
 }
 /* USER CODE END 4 */
