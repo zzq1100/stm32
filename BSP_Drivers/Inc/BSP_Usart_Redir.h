@@ -9,7 +9,7 @@ extern "C" { // extern "C", 告诉编译器，头文件里的函数是用C语言
 
 
 #include <stdio.h>
-#include "stm32f1xx_hal.h"
+#include "usart.h"
 
 extern UART_HandleTypeDef *ghusart;
 
