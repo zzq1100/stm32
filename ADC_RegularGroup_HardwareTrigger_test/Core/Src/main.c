@@ -19,8 +19,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
-#include "tim.h"
 #include "dma.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -110,7 +110,9 @@ int main(void)
 
   HAL_ADC_Start_DMA(&hadc3, (uint32_t*)values, 4);
 
-  HAL_TIM_Base_Start(&htim8);
+  //HAL_TIM_Base_Start(&htim8);
+
+  HAL_TIM_OC_Start(&htim8, TIM_CHANNEL_1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
